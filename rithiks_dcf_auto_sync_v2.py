@@ -57,7 +57,7 @@ def compute(data):
             price=dcf(replace(a,wacc=aw,terminal_growth=ag))['fair_value_per_share'] if aw>max(0,ag) else None
             line['values'].append({'wacc':aw,'price':price})
         matrix.append(line)
-    return {'inputs':asdict(a),'valuation':dcf(a),'sensitivity':matrix,'notice':'Illustrative data; not live'}
+    return {'inputs':asdict(a),'valuation':dcf(a),'sensitivity':matrix,'notice':'Simplified FCFF model; assumptions may be illustrative'}
 
 # SEC integration: official EDGAR public JSON; no third-party packages required.
 # Set SEC_USER_AGENT to an identifying application name and contact email.
@@ -211,7 +211,7 @@ def model_prefill(doc):
 def excel_export(payload):
     try: import xlsxwriter
     except ImportError: raise ValueError('Install Excel dependency: pip install XlsxWriter')
-    a=parse(payload.get('inputs',{}));v=dcf(a);doc=payload.get('company') or {}
+    a=parse(payload.get('inputs',{}));v=dcf(a);doc=payload.get('company') or {};provisional=payload.get('provisional_assumptions') or []
     if not isinstance(doc,dict):raise ValueError('Invalid company')
     name=str(doc.get('name') or 'Illustrative model')[:100];ticker=str(doc.get('ticker') or 'DEMO')[:16]
     buf=io.BytesIO();wb=xlsxwriter.Workbook(buf,{'in_memory':True});wb.set_calc_mode('auto')
@@ -254,6 +254,7 @@ def excel_export(payload):
     for row,txt,src in [(8,'Fair value / share',14),(9,'Enterprise value ($M)',8),(10,'Equity value ($M)',12),(11,'Terminal EV share',15)]:summary.write(row-1,0,txt);summary.write_formula(row-1,1,f"='DCF Valuation'!B{src}",pc if row==11 else link,metrics[src][2])
     summary.write('A14','No live market price supplied. Upside cannot be computed.',note)
     summary.write('A15','FCFF forecast is a simplified constant-ratio model.',note)
+    summary.write('A16','PRELIMINARY / UNVERIFIED — check Sources & Checks',note)
     sensitivity.write('A3','Terminal g / WACC',head)
     for j,offset in enumerate([-.01,-.005,0,.005,.01],1):sensitivity.write_formula(2,j,f'={ref["wacc"]}+({offset})',pc,a.wacc+offset)
     for i,offset in enumerate([-.005,0,.005],3):
@@ -285,6 +286,8 @@ def excel_export(payload):
     sources.write_formula('B10',"=IF(ABS('DCF Valuation'!B12-'DCF Valuation'!B8-'DCF Valuation'!B9+'DCF Valuation'!B10+'DCF Valuation'!B11)<0.01,\"PASS\",\"FAIL\")",None,'PASS')
     sources.write('A12','The workbook preserves user-provided inputs; SEC data is not re-verified on export.',note)
     sources.write('A13','Excel formulas recalculate when opened in Excel / compatible spreadsheet software.',note)
+    sources.write('A15','Provisional assumptions (NOT company verified)',note)
+    sources.write('B15',', '.join(provisional) if provisional else 'None recorded')
     chart=wb.add_chart({'type':'line'});chart.add_series({'name':'Revenue','categories':"='Forecast Model'!$C$3:$V$3",'values':"='Forecast Model'!$C$5:$V$5",'line':{'color':'#4479BA','width':2.5}});chart.set_title({'name':'Forecast Revenue'});chart.set_legend({'none':True});summary.insert_chart('D4',chart,{'x_scale':1.25,'y_scale':1.2})
     wb.close();return buf.getvalue(),ticker
 
@@ -297,23 +300,62 @@ main{max-width:1510px;margin:auto;padding:30px clamp(16px,3vw,38px) 70px}h1,h2,h
 .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;margin:21px 0}.card,.panel{background:linear-gradient(160deg,var(--surface),#0e192c);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 10px 35px #02081720}.card{min-height:116px}.card strong{display:block;font:800 clamp(20px,2vw,29px) Manrope,sans-serif;letter-spacing:-.9px;margin-top:9px;overflow-wrap:anywhere}.card:first-child{border-color:#5d75b3;background:linear-gradient(145deg,#1c2c52,#111c30)}.card:first-child strong{color:#b6c8ff}.layout{display:grid;grid-template-columns:minmax(280px,335px) minmax(0,1fr);gap:17px}.stack{display:grid;gap:17px;align-content:start}.fields{display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:10px;align-items:center}.fields label{font-size:12px;font-weight:600;color:#c8d4e6}.fields input,input#ticker{width:100%;background:#0a1427;color:var(--ink);border:1px solid #3a4d69;border-radius:9px;padding:10px 11px;font:600 13px 'DM Sans',sans-serif;outline:none}.fields input{text-align:right}.fields input:focus,input#ticker:focus{border-color:var(--accent);box-shadow:0 0 0 3px #7c9cff25}button{background:linear-gradient(135deg,#7595ff,#9a85ff);color:#080f23;border:0;padding:10px 14px;border-radius:9px;font:800 12px 'DM Sans',sans-serif;cursor:pointer;margin:5px 4px 0 0;transition:filter .15s,transform .15s}button:hover{filter:brightness(1.13);transform:translateY(-1px)}button:disabled{opacity:.4;cursor:not-allowed;transform:none}.alt{background:#253650;color:#e4edff;border:1px solid #364b6a}.scroll{overflow:auto;max-width:100%}table{border-collapse:collapse;width:100%;white-space:nowrap;font-size:12px}td,th{padding:11px 10px;border-bottom:1px solid #263751;text-align:right;font-variant-numeric:tabular-nums}th:first-child,td:first-child{text-align:left}th{color:#aebed6;font-size:11px;font-weight:700;background:#192740}tr:hover td{background:#18274055}.two{display:grid;grid-template-columns:1.15fr 1fr;gap:17px}.sens td,.sens th{text-align:center;border:1px solid #263751}.selected{outline:2px solid var(--accent);outline-offset:-2px;color:#b9c9ff;background:#30477588!important;font-weight:800}.bridge{display:grid;grid-template-columns:1fr auto;gap:11px;font-size:12px}.bridge span:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}.total{color:#b6c8ff;border-top:1px solid #425677;padding-top:12px;font-weight:800}svg{width:100%;height:230px}code{color:#b7c7ff;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.error{color:var(--danger);font-size:12px}a{color:#a9bdff!important}a:hover{text-decoration:underline}#activecompany{font-weight:700!important;font-size:15px!important;color:#a7c0ff!important}#companytable{margin:13px 0}#suggestions p{border-left:2px solid #536ca9;padding:5px 0 5px 10px;margin:7px 0}#datawarning{max-width:100%}
 @media(max-width:1100px){.layout{grid-template-columns:300px minmax(0,1fr)}.two{grid-template-columns:1fr}}@media(max-width:820px){.layout{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.headright{display:none}}@media(max-width:480px){.cards{grid-template-columns:1fr}header{font-size:18px}.panel{padding:15px}}
 </style></head><body><header><span class="brandmark">R</span><span>Rithiks <em>DCF Online</em></span><span class="headright">FINANCIAL RESEARCH WORKSPACE</span></header><main><h1>Valuation Dashboard</h1><h2 id="activecompany" style="color:#48dec2;margin:8px 0">DEMO MODEL — No company loaded</h2><div class="muted">Financial research &amp; valuation · USD millions · FCFF</div><div class="warn">ILLUSTRATIVE INPUTS — NOT LIVE DATA</div><div class="cards"><div class="card"><span class="muted">Fair value / share</span><strong id="fair">—</strong></div><div class="card"><span class="muted">Enterprise value ($M)</span><strong id="ev">—</strong></div><div class="card"><span class="muted">Equity value ($M)</span><strong id="equity">—</strong></div><div class="card"><span class="muted">Terminal EV contribution</span><strong id="share">—</strong></div></div><div class="layout"><aside class="stack"><section class="panel"><h3>Editable assumptions</h3><div class="fields" id="fields"></div><p><button id="calc">Recalculate</button><button class="alt" id="reset">Demo / Reset</button><button class="alt" id="bear">Bear</button><button class="alt" id="bull">Bull</button></p><div class="error" id="error"></div><p class="muted">Enter 9 for 9%. All currency and shares are in millions.</p></section><section class="panel"><h3>Export</h3><button class="alt" id="csv">CSV</button><button class="alt" id="json">JSON</button><button id="xlsx" type="button">Export Excel Model (.xlsx)</button><div class="muted" id="excelstatus" style="margin-top:9px" aria-live="polite">Exports all seven worksheets with editable Excel formulas.</div></section></aside><div class="stack"><section class="panel"><h3>Projected free cash flow</h3><svg id="chart" viewBox="0 0 700 230"></svg></section><section class="panel"><h3>Forecast schedule ($M)</h3><div class="scroll"><table><thead><tr><th>Year</th><th>Revenue</th><th>EBIT</th><th>NOPAT</th><th>D&A</th><th>CapEx</th><th>ΔNWC</th><th>FCFF</th><th>PV FCFF</th></tr></thead><tbody id="rows"></tbody></table></div></section><div class="two"><section class="panel"><h3>WACC × terminal growth</h3><div class="scroll"><table class="sens" id="sens"></table></div></section><section class="panel"><h3>Enterprise-to-equity bridge ($M)</h3><div class="bridge" id="bridge"></div></section></div><section class="panel"><h3>Calculation reference</h3><p class="muted"><code>Revenueₜ = Revenueₜ₋₁ × (1 + growth)</code><br><code>EBIT = Revenue × margin</code><br><code>NOPAT = EBIT × (1 − tax rate)</code><br><code>ΔNWC = ΔRevenue × NWC ratio</code><br><code>FCFF = NOPAT + D&A − CapEx − ΔNWC</code><br><code>PV FCFF = FCFF / (1 + WACC)ᵗ</code><br><code>Terminal value = FCFFₙ × (1 + g) / (WACC − g)</code><br><code>EV = Σ PV FCFF + PV terminal value</code><br><code>Equity = EV + cash − debt − other claims</code><br><code>Fair value = Equity / diluted shares</code></p><p class="muted">Simplified constant-ratio FCFF model. SEC historical data can be loaded above; no linked three statements, live price, or derived WACC.</p></section></div></div></main><script>
-const defs=[['revenue','Revenue ($M)',416161],['revenue_growth','Revenue growth (%)',6.5],['operating_margin','Operating margin (%)',30],['tax_rate','Tax rate (%)',21],['da_pct','D&A / revenue (%)',3],['capex_pct','CapEx / revenue (%)',4],['nwc_pct','NWC / revenue (%)',2],['wacc','WACC (%)',9],['terminal_growth','Terminal growth (%)',2.5],['cash','Cash ($M)',60000],['debt','Debt ($M)',100000],['other_claims','Other claims ($M)',0],['diluted_shares','Diluted shares (M)',15000],['years','Forecast years',5]];const rates=new Set(['revenue_growth','operating_margin','tax_rate','da_pct','capex_pct','nwc_pct','wacc','terminal_growth']),E=id=>document.getElementById(id),F=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});let result=null;let activeCompany=null;let requestGeneration=0;let modelReady=false;const requiredInputs=['revenue','cash','debt','diluted_shares','revenue_growth','operating_margin','da_pct','capex_pct','wacc','nwc_pct','tax_rate','terminal_growth'];E('fields').innerHTML=defs.map(([k,l,v])=>`<label for="${k}">${l}</label><input id="${k}" type="number" step="any" value="${v}">`).join('');function inputs(){return Object.fromEntries(defs.map(([k])=>[k,Number(E(k).value)/(rates.has(k)?100:1)]))}async function update(){if(!modelReady)return;const generation=requestGeneration;try{E('error').textContent='';let r=await fetch('/api/dcf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(inputs())});let d=await r.json();if(!r.ok)throw Error(d.error||'Calculation error');if(generation!==requestGeneration)return;result=d;render(d)}catch(e){if(generation===requestGeneration){clearValuation();E('error').textContent=e.message}}}
+const defs=[['revenue','Revenue ($M)',416161],['revenue_growth','Revenue growth (%)',6.5],['operating_margin','Operating margin (%)',30],['tax_rate','Tax rate (%)',21],['da_pct','D&A / revenue (%)',3],['capex_pct','CapEx / revenue (%)',4],['nwc_pct','NWC / revenue (%)',2],['wacc','WACC (%)',9],['terminal_growth','Terminal growth (%)',2.5],['cash','Cash ($M)',60000],['debt','Debt ($M)',100000],['other_claims','Other claims ($M)',0],['diluted_shares','Diluted shares (M)',15000],['years','Forecast years',5]];const rates=new Set(['revenue_growth','operating_margin','tax_rate','da_pct','capex_pct','nwc_pct','wacc','terminal_growth']),E=id=>document.getElementById(id),F=n=>Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});let result=null;let activeCompany=null;let requestGeneration=0;let modelReady=false;const requiredInputs=['revenue','cash','debt','diluted_shares','revenue_growth','operating_margin','da_pct','capex_pct','wacc','nwc_pct','tax_rate','terminal_growth'];E('fields').innerHTML=defs.map(([k,l,v])=>`<label for="${k}">${l}</label><input id="${k}" type="number" step="any" value="${v}">`).join('');function inputs(){return Object.fromEntries(defs.map(([k])=>[k,Number(E(k).value)/(rates.has(k)?100:1)]))}async function update(){if(!modelReady)return;const generation=requestGeneration;const calcId=++calculationSequence;try{E('error').textContent='';let r=await fetch('/api/dcf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(inputs())});let d=await r.json();if(!r.ok)throw Error(d.error||'Calculation error');if(generation!==requestGeneration||calcId!==calculationSequence)return;result=d;render(d)}catch(e){if(generation===requestGeneration&&calcId===calculationSequence){clearValuation();E('error').textContent=e.message}}}
 function render(d){let v=d.valuation,a=d.inputs;E('fair').textContent='$'+F(v.fair_value_per_share);E('ev').textContent='$'+F(v.enterprise_value);E('equity').textContent='$'+F(v.equity_value);E('share').textContent=F(v.terminal_share_pct)+'%';E('rows').innerHTML=v.rows.map(r=>'<tr>'+['year','revenue','ebit','nopat','da','capex','delta_nwc','fcff','pv_fcff'].map(k=>`<td>${k==='year'?r[k]:'$'+F(r[k])}</td>`).join('')+'</tr>').join('');let s=d.sensitivity;E('sens').innerHTML='<tr><th>g / WACC</th>'+s[0].values.map(x=>'<th>'+F(x.wacc*100)+'%</th>').join('')+'</tr>'+s.map((r,i)=>'<tr><th>'+F(r.growth*100)+'%</th>'+r.values.map((x,j)=>`<td class="${i===1&&j===2?'selected':''}">${x.price===null?'N/A':'$'+F(x.price)}</td>`).join('')+'</tr>').join('');let items=[['PV explicit FCFF',v.pv_explicit],['PV terminal',v.pv_terminal],['Enterprise value',v.enterprise_value],['+ Cash',a.cash],['− Debt',-a.debt],['− Other claims',-a.other_claims],['Equity value',v.equity_value]];E('bridge').innerHTML=items.map(([n,x],i)=>`<span class="${i===6?'total':''}">${n}</span><span class="${i===6?'total':''}">$${F(x)}</span>`).join('');let rows=v.rows,vals=rows.map(r=>r.fcff),lo=Math.min(0,...vals),hi=Math.max(0,...vals),range=hi-lo||1,X=i=>50+i*600/Math.max(1,rows.length-1),Y=n=>180-(n-lo)/range*145;let path=rows.map((r,i)=>`${i?'L':'M'}${X(i)},${Y(r.fcff)}`).join(' ');E('chart').innerHTML=`<line x1="40" y1="${Y(0)}" x2="670" y2="${Y(0)}" stroke="#64748b"/><path d="${path}" fill="none" stroke="#91a8ff" stroke-width="3"/>`+rows.map((r,i)=>`<circle cx="${X(i)}" cy="${Y(r.fcff)}" r="4" fill="#91a8ff"/><text x="${X(i)}" y="210" text-anchor="middle" fill="#c4d6e6" font-size="12">Y${r.year}</text>`).join('')}
 let loaded=null;
-function clearValuation(){result=null;for(const id of ['fair','ev','equity','share'])E(id).textContent='—';for(const id of ['rows','sens','bridge','chart'])E(id).replaceChildren();E('excelstatus').textContent='Valuation pending — load and review company assumptions before exporting.';}
-function setReviewPending(message){modelReady=false;clearValuation();E('error').textContent=message||'Review required before valuation.';}
-function download(name,text,type){let u=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}E('calc').onclick=()=>{const missing=requiredInputs.filter(k=>E(k).value.trim()==='');if(missing.length){setReviewPending('Enter missing assumptions: '+missing.join(', '));return;}modelReady=true;update()};E('reset').onclick=()=>{++requestGeneration;loaded=null;defs.forEach(([k,l,v])=>E(k).value=v);E('activecompany').textContent='ILLUSTRATIVE DEMO — No company loaded';E('datawarning').textContent='ILLUSTRATIVE MODEL — Sample inputs, not company financial data';E('companymsg').textContent='Demo restored. Search a ticker to retrieve SEC financials.';E('companytable').replaceChildren();E('suggestions').replaceChildren();E('applycompany').disabled=true;modelReady=true;update();};E('bear').onclick=()=>{E('revenue_growth').value=2;E('operating_margin').value=25;if(modelReady)update()};E('bull').onclick=()=>{E('revenue_growth').value=10;E('operating_margin').value=34;if(modelReady)update()};E('csv').onclick=()=>{if(!result)return;let rows=result.valuation.rows,keys=Object.keys(rows[0]);download('rithiks_dcf_forecast.csv',[keys.join(','),...rows.map(r=>keys.map(k=>r[k]).join(','))].join('\\n'),'text/csv')};E('json').onclick=()=>{if(result)download('rithiks_dcf_model.json',JSON.stringify(result,null,2),'application/json')};E('xlsx').onclick=async()=>{if(!modelReady||!result){E('excelstatus').textContent='Complete company assumptions and recalculate before exporting.';return;}const b=E('xlsx'),status=E('excelstatus');b.disabled=true;status.textContent='Building your Excel workbook…';try{let r=await fetch('/api/export/xlsx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inputs:inputs(),company:loaded})});if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.error||'Excel export failed (HTTP '+r.status+')')}let blob=await r.blob();if(blob.size<1000)throw Error('The server returned an empty Excel file');let url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Rithiks_DCF_'+(loaded?.ticker||'DEMO')+'.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status.textContent='Excel workbook downloaded ('+(blob.size/1024).toFixed(0)+' KB).';}catch(e){status.textContent='Export error: '+e.message;E('error').textContent=e.message}finally{b.disabled=false}};defs.forEach(([k])=>E(k).addEventListener('change',()=>{if(modelReady)update();else if(loaded)E('error').textContent='Assumption changed. Complete all required fields and click Recalculate.'}));modelReady=true;update();E('activecompany').textContent='ILLUSTRATIVE DEMO — No company loaded';E('datawarning').textContent='ILLUSTRATIVE MODEL — Sample inputs, not company financial data';
+let provisionalKeys=[];
+let calculationSequence=0;
+const FALLBACKS={revenue_growth:5,operating_margin:20,da_pct:3,capex_pct:4,nwc_pct:2,wacc:9,tax_rate:21,terminal_growth:2.5};
+function clearValuation(){result=null;for(const id of ['fair','ev','equity','share'])E(id).textContent='—';for(const id of ['rows','sens','bridge','chart'])E(id).replaceChildren();E('excelstatus').textContent='No current valuation available.';}
+function setReviewPending(message){modelReady=false;clearValuation();E('error').textContent=message||'Waiting for inputs.';}
+function markInput(key,source){const el=E(key);if(!el)return;el.title=source;el.style.borderColor=source.startsWith('SEC')?'#3c947f':source.startsWith('Historical')?'#6080c8':'#c99850';}
+function labelProvisional(){if(!loaded)return;const warning=provisionalKeys.length?'Provisional estimates: '+provisionalKeys.join(', ')+'.':'No provisional ratios required.';E('datawarning').textContent='PRELIMINARY DCF — '+warning+' Not a verified price target. Review SEC filings and WACC before investment use.';}
+function download(name,text,type){let u=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+E('calc').onclick=()=>{const missing=requiredInputs.filter(k=>E(k).value.trim()==='');if(missing.length){setReviewPending('Missing required SEC values: '+missing.join(', '));return;}modelReady=true;update()};
+E('reset').onclick=()=>{++requestGeneration;++calculationSequence;loaded=null;provisionalKeys=[];defs.forEach(([k,l,v])=>{E(k).value=v;E(k).style.borderColor='';E(k).title='Illustrative demo input';});E('activecompany').textContent='ILLUSTRATIVE DEMO — No company loaded';E('datawarning').textContent='ILLUSTRATIVE MODEL — Sample inputs, not company financial data';E('companymsg').textContent='Demo restored. Search a ticker to retrieve SEC financials.';E('companytable').replaceChildren();E('suggestions').replaceChildren();E('applycompany').disabled=true;modelReady=true;update();};
+E('bear').onclick=()=>{E('revenue_growth').value=2;E('operating_margin').value=25;if(modelReady)update()};E('bull').onclick=()=>{E('revenue_growth').value=10;E('operating_margin').value=34;if(modelReady)update()};
+E('csv').onclick=()=>{if(!result)return;let rows=result.valuation.rows,keys=Object.keys(rows[0]);download('rithiks_dcf_forecast.csv',[keys.join(','),...rows.map(r=>keys.map(k=>r[k]).join(','))].join(String.fromCharCode(10)),'text/csv')};
+E('json').onclick=()=>{if(result)download('rithiks_dcf_model.json',JSON.stringify({model:result,company:loaded?.ticker||'DEMO',provisional_assumptions:provisionalKeys},null,2),'application/json')};
+E('xlsx').onclick=async()=>{if(!modelReady||!result){E('excelstatus').textContent='Complete company inputs before exporting.';return;}const b=E('xlsx'),status=E('excelstatus');b.disabled=true;status.textContent='Building your Excel workbook…';try{let r=await fetch('/api/export/xlsx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inputs:inputs(),company:loaded,provisional_assumptions:provisionalKeys})});if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.error||'Excel export failed (HTTP '+r.status+')')}let blob=await r.blob();if(blob.size<1000)throw Error('The server returned an empty Excel file');let url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Rithiks_DCF_'+(loaded?.ticker||'DEMO')+'.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status.textContent='Excel workbook downloaded ('+(blob.size/1024).toFixed(0)+' KB).';}catch(e){status.textContent='Export error: '+e.message;E('error').textContent=e.message}finally{b.disabled=false}};
+defs.forEach(([k])=>E(k).addEventListener('change',()=>{if(modelReady)update();}));
+modelReady=true;update();E('activecompany').textContent='ILLUSTRATIVE DEMO — No company loaded';E('datawarning').textContent='ILLUSTRATIVE MODEL — Sample inputs, not company financial data';
 
+function applyCompany(data){
+  // No values from the previously selected ticker survive the switch.
+  for(const [key] of defs){E(key).value='';E(key).style.borderColor='';E(key).title='Missing';}
+  E('years').value=5;E('other_claims').value=0;
+  provisionalKeys=[];
+  const supplied=data.prefill?.inputs||{};
+  for(const [key,value] of Object.entries(supplied)){
+    if(E(key)&&Number.isFinite(value)){
+      E(key).value=rates.has(key)?(value*100).toFixed(5):value.toFixed(5);
+      markInput(key,['revenue','cash','debt','diluted_shares'].includes(key)?'SEC-reported or derived from SEC filing':'Historical SEC-based estimate; review methodology');
+    }
+  }
+  const suggestions=data.prefill?.suggestions||{};
+  for(const [key,defaultValue] of Object.entries(FALLBACKS)){
+    if(E(key).value.trim()!=='')continue;
+    const suggested=suggestions[key];
+    const value=suggested&&Number.isFinite(suggested.value)?suggested.value*100:defaultValue;
+    E(key).value=Number(value).toFixed(5);
+    provisionalKeys.push(key);
+    markInput(key,'Illustrative default / unverified estimate; analyst review required');
+  }
+  const missing=requiredInputs.filter(k=>E(k).value.trim()==='');
+  labelProvisional();
+  if(missing.length){setReviewPending('Missing essential reported data: '+missing.join(', ')+'. Please enter verified values to calculate.');return;}
+  modelReady=true;
+  E('error').textContent='';
+  update();
+}
 E('loadcompany').onclick=async()=>{
   const q=E('ticker').value.trim().toUpperCase();
   const generation=++requestGeneration;
-  loaded=null;setReviewPending('Waiting for '+q+' SEC data; previous valuation cleared.');
-  E('activecompany').textContent='Loading '+q+' — valuation not yet verified';
-  E('activecompany').style.color='#fbbf24';
-  E('datawarning').textContent='PENDING COMPANY LOAD — previous valuation is not valid for '+q+'.';
-  E('applycompany').disabled=true;
-  E('companytable').replaceChildren();
-  E('suggestions').replaceChildren();
+  ++calculationSequence;
+  loaded=null;setReviewPending('Retrieving SEC data for '+q+'...');
+  E('activecompany').textContent='Loading '+q+' — valuation not yet calculated';
+  E('datawarning').textContent='LOADING COMPANY — previous valuation cleared.';
+  E('applycompany').disabled=true;E('companytable').replaceChildren();E('suggestions').replaceChildren();
   E('companymsg').textContent='Loading SEC data for '+q+'...';
   if(!q){E('companymsg').textContent='Enter a ticker.';return;}
   try{
@@ -322,9 +364,7 @@ E('loadcompany').onclick=async()=>{
     if(generation!==requestGeneration)return;
     if(!response.ok)throw Error(data.error||'SEC request failed');
     loaded=data;
-    E('activecompany').textContent=data.name+' ('+data.ticker+') — SEC data retrieved, not yet applied';
-    E('activecompany').style.color='#48dec2';
-    E('datawarning').textContent='SEC DATA RETRIEVED — apply historical inputs and review missing assumptions before using valuation.';
+    E('activecompany').textContent=data.name+' ('+data.ticker+') — preliminary model';
     E('companymsg').textContent=data.name+' ('+data.ticker+') · CIK '+data.cik+' · Retrieved '+data.retrieved_at_utc+' · '+data.prefill.note;
     const cols=['revenue','operating_income','net_income','da','capex','cash','debt_current','debt_long','diluted_shares'];
     const table=document.createElement('table');
@@ -334,31 +374,15 @@ E('loadcompany').onclick=async()=>{
     for(const [key,v] of Object.entries(data.prefill.suggestions||{})){
       const line=document.createElement('p');line.className='muted';line.textContent=key+': '+(v.value==null?'Unavailable':(v.value*100).toFixed(2)+'%')+' — '+v.method+' ['+v.confidence+']';E('suggestions').append(line);
     }
-    // Populate only verified SEC inputs. Do not carry cash, debt, or share counts from another ticker.
-    for(const key of ['revenue','cash','debt','diluted_shares','revenue_growth','operating_margin','da_pct','capex_pct','wacc','nwc_pct','tax_rate','terminal_growth','other_claims'])E(key).value='';
-    for(const [key,value] of Object.entries(data.prefill.inputs||{})){
-      if(E(key)&&Number.isFinite(value))E(key).value=rates.has(key)?(value*100).toFixed(5):value.toFixed(5);
-    }
-    E('other_claims').value='0';
     E('applycompany').disabled=false;
-    const missing=[...(data.prefill.missing||[]),...['wacc','nwc_pct','tax_rate','terminal_growth'].filter(k=>data.prefill.inputs?.[k]==null)];
-    setReviewPending('Company inputs loaded. Enter and review '+[...new Set(missing)].join(', ')+'; then click Apply SEC inputs.');
-  }catch(err){if(generation!==requestGeneration)return;E('activecompany').textContent='Company lookup failed — '+q+' not loaded';E('activecompany').style.color='#fb7185';E('companymsg').textContent='Error: '+err.message;}
+    applyCompany(data);
+  }catch(err){if(generation!==requestGeneration)return;E('activecompany').textContent='Company lookup failed — '+q+' not loaded';E('companymsg').textContent='Error: '+err.message;setReviewPending('Company lookup failed. No valuation available.');}
 };
-E('applycompany').onclick=()=>{
-  if(!loaded)return;
-  const missing=requiredInputs.filter(k=>E(k).value.trim()==='');
-  if(missing.length){setReviewPending('Fill and verify missing inputs: '+missing.join(', '));return;}
-  const outliers=[['revenue_growth',40],['da_pct',30],['capex_pct',30]].filter(([k,limit])=>Math.abs(Number(E(k).value))>limit);
-  if(outliers.length && !window.confirm('Unusually high assumptions: '+outliers.map(x=>x[0]).join(', ')+'. Confirm you have reviewed the SEC data and wish to calculate using these inputs.'))return;
-  modelReady=true;
-  E('activecompany').textContent=loaded.name+' ('+loaded.ticker+') — analyst-reviewed model (not verified investment value)';
-  E('datawarning').textContent='SEC HISTORICAL DATA + ANALYST ASSUMPTIONS — WACC, TAX, NWC AND SHARE COUNT MUST BE INDEPENDENTLY VERIFIED.';
-  update();
-};
+E('applycompany').onclick=()=>{if(!loaded)return;const missing=requiredInputs.filter(k=>E(k).value.trim()==='');if(missing.length){setReviewPending('Enter verified missing values: '+missing.join(', '));return;}modelReady=true;labelProvisional();update();};
 E('ticker').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();E('loadcompany').click();}});
+
 </script></body></html>'''
-HTML=HTML.replace('<div class="warn">ILLUSTRATIVE INPUTS — NOT LIVE DATA</div>','''<div class="panel" style="margin:14px 0"><h3>Company lookup · Official SEC EDGAR</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="ticker" placeholder="Ticker e.g. AAPL" value="AAPL" ><button id="loadcompany">Load SEC financials</button><button class="alt" id="applycompany" disabled>Apply SEC inputs</button></div><p class="muted" id="companymsg">SEC filing data requires SEC_USER_AGENT. Prices and WACC are not supplied by SEC.</p><div class="scroll" id="companytable"></div><div id="suggestions"></div></div><div class="warn" id="datawarning">ILLUSTRATIVE INPUTS — NOT LIVE DATA</div>''')
+HTML=HTML.replace('<div class="warn">ILLUSTRATIVE INPUTS — NOT LIVE DATA</div>','''<div class="panel" style="margin:14px 0"><h3>Company lookup · Official SEC EDGAR</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="ticker" placeholder="Ticker e.g. AAPL" value="AAPL" ><button id="loadcompany">Load SEC financials</button><button class="alt" id="applycompany" disabled>Apply SEC inputs</button></div><p class="muted" id="companymsg">Ready to retrieve official SEC filings. Market prices and WACC are not supplied by the SEC.</p><div class="scroll" id="companytable"></div><div id="suggestions"></div></div><div class="warn" id="datawarning">ILLUSTRATIVE INPUTS — NOT LIVE DATA</div>''')
 HTML=HTML.replace(".join('\\n'),'text/csv'", ".join(String.fromCharCode(10)),'text/csv'")
 class Handler(BaseHTTPRequestHandler):
     def respond(self,status,data,mime):
